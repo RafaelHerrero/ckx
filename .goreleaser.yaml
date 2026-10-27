@@ -1,6 +1,43 @@
+version: 2
+
 project_name: ckx
 
 builds:
   - binary: ckx
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
     ldflags:
       - -s -w -X github.com/eimarfandino/ckx/cmd.Version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+brews:
+  - name: ckx
+    repository:
+      owner: eimarfandino
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/eimarfandino/ckx
+    description: "Switch between AWS (EKS) and Azure (AKS) Kubernetes clusters from one CLI"
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    test: |
+      system "#{bin}/ckx", "version"
+    caveats: |
+      ckx shells out to the cloud CLIs, install the ones you use:
+        AWS:   brew install awscli
+        Azure: brew install azure-cli kubelogin
+      and kubectl:  brew install kubernetes-cli

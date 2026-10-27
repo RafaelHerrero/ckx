@@ -180,11 +180,17 @@ go build -o ckx
 sudo mv ckx /usr/local/bin/
 ```
 
-### Homebrew
+### Homebrew (recommended)
 
 ```bash
-brew tap eimarfandino/tap https://github.com/eimarfandino/homebrew-tap.git
 brew install eimarfandino/tap/ckx
+```
+
+Upgrade with `brew upgrade ckx`. The formula only installs `ckx`; install the cloud CLIs you use separately:
+
+```bash
+brew install awscli kubernetes-cli          # AWS
+brew install azure-cli kubelogin            # Azure
 ```
 
 Verify:
