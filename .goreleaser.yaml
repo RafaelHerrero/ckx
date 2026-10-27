@@ -1,0 +1,6 @@
+project_name: ckx
+
+builds:
+  - binary: ckx
+    ldflags:
+      - -s -w -X github.com/eimarfandino/ckx/cmd.Version={{.Version}}
