@@ -51,17 +51,20 @@ func (p *awsProvider) HasProfile(ctx context.Context, profile string) (bool, err
 }
 
 func (p *awsProvider) Prepare(ctx context.Context, profile string) (string, error) {
-	if err := ensureSSO(profile); err != nil {
-		return "", fmt.Errorf("failed to ensure SSO login: %w", err)
-	}
-
+	// Check the region first: without one the SDK cannot reach STS, which would
+	// otherwise look like expired credentials and trigger a useless SSO login.
 	region, err := clusterProvider.GetRegion(ctx, profile)
 	if err != nil {
 		return "", fmt.Errorf("failed to get region for profile %s: %w", profile, err)
 	}
 	if region == "" {
-		return "", fmt.Errorf("no region configured for profile %s", profile)
+		return "", fmt.Errorf("no region configured for profile %s; add 'region = <aws-region>' to its section in ~/.aws/config or set AWS_REGION", profile)
 	}
+
+	if err := ensureSSO(profile); err != nil {
+		return "", fmt.Errorf("failed to ensure SSO login: %w", err)
+	}
+
 	return "region " + region, nil
 }
 
@@ -95,12 +98,13 @@ func ensureSSO(profile string) error {
 
 	ctx := context.Background()
 
-	if credentialsValidator(ctx, profile) {
+	err := credentialsValidator(ctx, profile)
+	if err == nil {
 		fmt.Fprintln(outputWriter, "Credentials are valid")
 		return nil
 	}
 
-	fmt.Fprintf(outputWriter, "Credentials for profile '%s' are expired or invalid. Attempting SSO login...\n", profile)
+	fmt.Fprintf(outputWriter, "Credentials for profile '%s' are expired or invalid (%v). Attempting SSO login...\n", profile, err)
 
 	cmd := execCommand("aws", "sso", "login", "--profile", profile)
 	cmd.Stdin = os.Stdin
@@ -111,22 +115,23 @@ func ensureSSO(profile string) error {
 	}
 
 	// Validate again after login
-	if !credentialsValidator(ctx, profile) {
-		return fmt.Errorf("credentials still invalid after SSO login for profile %s", profile)
+	if err := credentialsValidator(ctx, profile); err != nil {
+		return fmt.Errorf("credentials still invalid after SSO login for profile %s: %w", profile, err)
 	}
 
 	fmt.Fprintln(outputWriter, "SSO login successful")
 	return nil
 }
 
-// isCredentialsValid checks if the current credentials are valid using AWS SDK
-func isCredentialsValid(ctx context.Context, profile string) bool {
+// isCredentialsValid checks the profile's credentials with STS and returns
+// the reason when they cannot be used.
+func isCredentialsValid(ctx context.Context, profile string) error {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithSharedConfigProfile(profile))
 	if err != nil {
-		return false
+		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	stsClient := sts.NewFromConfig(cfg)
 	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-	return err == nil
+	return err
 }

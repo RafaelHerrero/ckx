@@ -65,7 +65,7 @@ func setupAWS(t *testing.T, mock *mockClusterProvider, profiles ...string) {
 	})
 
 	clusterProvider = mock
-	credentialsValidator = func(ctx context.Context, profile string) bool { return true }
+	credentialsValidator = func(ctx context.Context, profile string) error { return nil }
 	getProfiles = func() ([]string, error) { return profiles, nil }
 }
 
@@ -151,6 +151,46 @@ func TestAWSProvider_PrepareErrors(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %v", tt.want, err)
 			}
 		})
+	}
+}
+
+func TestAWSProvider_MissingRegionSkipsSSOLogin(t *testing.T) {
+	setupTest(t, &awsProvider{})
+	setupAWS(t, &mockClusterProvider{region: ""}, "p")
+
+	var validated bool
+	credentialsValidator = func(ctx context.Context, profile string) error {
+		validated = true
+		return fmt.Errorf("should not be called")
+	}
+	exec := &scriptedExec{handler: func(string) (string, int) { return "", 0 }}
+	execCommand = exec.command
+
+	_, err := (&awsProvider{}).Prepare(context.Background(), "p")
+	if err == nil || !strings.Contains(err.Error(), "no region configured for profile p") {
+		t.Fatalf("expected missing region error, got %v", err)
+	}
+	if validated || exec.called("aws sso login") {
+		t.Fatal("credentials must not be checked and SSO login must not run without a region")
+	}
+}
+
+func TestEnsureSSO_ReportsUnderlyingError(t *testing.T) {
+	setupTest(t, &awsProvider{})
+	setupAWS(t, &mockClusterProvider{region: "eu-west-1"}, "p")
+
+	credentialsValidator = func(ctx context.Context, profile string) error {
+		return fmt.Errorf("token has expired")
+	}
+	exec := &scriptedExec{handler: func(string) (string, int) { return "", 0 }}
+	execCommand = exec.command
+
+	err := ensureSSO("p")
+	if !exec.called("aws sso login --profile p") {
+		t.Fatalf("expected SSO login, calls: %v", exec.calls)
+	}
+	if err == nil || !strings.Contains(err.Error(), "still invalid") || !strings.Contains(err.Error(), "token has expired") {
+		t.Fatalf("expected error to include the underlying cause, got %v", err)
 	}
 }
 
