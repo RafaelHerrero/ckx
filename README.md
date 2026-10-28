@@ -54,6 +54,15 @@ region = eu-central-1
 ckx [command]
 ```
 
+### Interactive picker
+
+Running `ckx` with no subcommand lists every AWS profile and Azure subscription in [fzf](https://github.com/junegunn/fzf). The profile you pick is passed to `ckx use`, so you go on to choose a cluster as usual. Press `Esc` to cancel. You need `fzf` installed (`brew install fzf`).
+
+```bash
+ckx            # pick a profile with fzf, then use it
+ckx --export   # same, but print the export line for eval
+```
+
 ### Available Commands
 
 - `completion`: Generate the autocompletion script for the specified shell
@@ -106,7 +115,7 @@ A subprocess cannot modify the parent shell's environment, so to also set `AWS_P
 ```sh
 # ~/.zshrc
 cx() {
-  if [[ "$1" == "use" ]]; then
+  if [[ $# -eq 0 || "$1" == "use" ]]; then
     eval "$(ckx "$@" --export)"
   else
     ckx "$@"
@@ -115,6 +124,7 @@ cx() {
 ```
 
 ```bash
+cx                         # fzf picker, then exports the env var
 cx use my-aws-profile      # switches profile, updates kubeconfig, exports AWS_PROFILE
 cx use "My Subscription"   # exports AZURE_SUBSCRIPTION_ID
 cx list                    # lists AWS profiles and Azure subscriptions

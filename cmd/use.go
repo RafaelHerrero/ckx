@@ -49,87 +49,94 @@ listed together so you can pick one.`,
 		return cobra.ExactArgs(1)(cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx := context.Background()
-
-		// If export flag is set, redirect informational output to stderr
-		originalWriter := outputWriter
-		if exportFlag {
-			outputWriter = os.Stderr
+		profile := ""
+		if len(args) > 0 {
+			profile = args[0]
 		}
-		defer func() { outputWriter = originalWriter }()
+		runUse(context.Background(), profile, providerFlag, allFlag)
+	},
+}
 
-		var (
-			candidates []candidate
-			scope      string
-		)
+// runUse logs in to the given profile (or every subscription when all is set),
+// lets the user pick a cluster and updates the kubeconfig.
+func runUse(ctx context.Context, profile, forcedProvider string, all bool) {
+	// If export flag is set, redirect informational output to stderr
+	originalWriter := outputWriter
+	if exportFlag {
+		outputWriter = os.Stderr
+	}
+	defer func() { outputWriter = originalWriter }()
 
-		if allFlag {
-			var err error
-			candidates, err = gatherAllClusters(ctx)
-			if err != nil {
-				fmt.Fprintln(outputWriter, "Failed to list clusters:", err)
-				return
-			}
-			scope = "all subscriptions"
-		} else {
-			profile := args[0]
-			provider, err := resolveProvider(ctx, profile, providerFlag, outputWriter)
-			if err != nil {
-				fmt.Fprintln(outputWriter, err)
-				return
-			}
+	var (
+		candidates []candidate
+		scope      string
+	)
 
-			scope, err = provider.Prepare(ctx, profile)
-			if err != nil {
-				fmt.Fprintln(outputWriter, "Error:", err)
-				return
-			}
-
-			refs, err := provider.ListClusters(ctx, profile)
-			if err != nil {
-				fmt.Fprintln(outputWriter, "Failed to list clusters:", err)
-				return
-			}
-			for _, r := range refs {
-				candidates = append(candidates, candidate{provider: provider, ref: r})
-			}
+	if all {
+		var err error
+		candidates, err = gatherAllClusters(ctx)
+		if err != nil {
+			fmt.Fprintln(outputWriter, "Failed to list clusters:", err)
+			return
 		}
-
-		if len(candidates) == 0 {
-			fmt.Fprintln(outputWriter, "No clusters found in this account")
+		scope = "all subscriptions"
+	} else {
+		provider, err := resolveProvider(ctx, profile, forcedProvider, outputWriter)
+		if err != nil {
+			fmt.Fprintln(outputWriter, err)
 			return
 		}
 
-		selected := candidates[0]
-		if len(candidates) == 1 {
-			fmt.Fprintln(outputWriter, "Only one cluster found:", selected.ref.Name)
-		} else {
-			fmt.Fprintln(outputWriter, "Available clusters in", scope)
-			for i, c := range candidates {
-				label := c.ref.Display()
-				if allFlag {
-					label = fmt.Sprintf("%s [%s]", label, c.provider.Name())
-				}
-				fmt.Fprintf(outputWriter, "[%d] %s\n", i+1, label)
-			}
-
-			fmt.Fprint(outputWriter, "Select cluster by number: ")
-			reader := bufio.NewReader(os.Stdin)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				fmt.Fprintln(outputWriter, "Error reading input:", err)
-				return
-			}
-			choice, err := strconv.Atoi(strings.TrimSpace(input))
-			if err != nil || choice < 1 || choice > len(candidates) {
-				fmt.Fprintln(outputWriter, "Invalid selection")
-				return
-			}
-			selected = candidates[choice-1]
+		scope, err = provider.Prepare(ctx, profile)
+		if err != nil {
+			fmt.Fprintln(outputWriter, "Error:", err)
+			return
 		}
 
-		updateKubeconfig(ctx, selected, exportFlag)
-	},
+		refs, err := provider.ListClusters(ctx, profile)
+		if err != nil {
+			fmt.Fprintln(outputWriter, "Failed to list clusters:", err)
+			return
+		}
+		for _, r := range refs {
+			candidates = append(candidates, candidate{provider: provider, ref: r})
+		}
+	}
+
+	if len(candidates) == 0 {
+		fmt.Fprintln(outputWriter, "No clusters found in this account")
+		return
+	}
+
+	selected := candidates[0]
+	if len(candidates) == 1 {
+		fmt.Fprintln(outputWriter, "Only one cluster found:", selected.ref.Name)
+	} else {
+		fmt.Fprintln(outputWriter, "Available clusters in", scope)
+		for i, c := range candidates {
+			label := c.ref.Display()
+			if all {
+				label = fmt.Sprintf("%s [%s]", label, c.provider.Name())
+			}
+			fmt.Fprintf(outputWriter, "[%d] %s\n", i+1, label)
+		}
+
+		fmt.Fprint(outputWriter, "Select cluster by number: ")
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(outputWriter, "Error reading input:", err)
+			return
+		}
+		choice, err := strconv.Atoi(strings.TrimSpace(input))
+		if err != nil || choice < 1 || choice > len(candidates) {
+			fmt.Fprintln(outputWriter, "Invalid selection")
+			return
+		}
+		selected = candidates[choice-1]
+	}
+
+	updateKubeconfig(ctx, selected, exportFlag)
 }
 
 func init() {
