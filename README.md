@@ -186,9 +186,11 @@ sudo mv ckx /usr/local/bin/
 ```bash
 git clone https://github.com/eimarfandino/ckx.git
 cd ckx
-go build -o ckx
-sudo mv ckx /usr/local/bin/
+make build        # builds ./ckx
+make install      # or install into $(go env GOPATH)/bin
 ```
+
+Run `make help` to see all targets (`build`, `run`, `install`, `test`, `vet`, `fmt`, `clean`). Use `make run ARGS="use my-profile"` to build and run in one step.
 
 ### Homebrew (recommended)
 
