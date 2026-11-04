@@ -177,8 +177,14 @@ func (p *azureProvider) Prepare(ctx context.Context, profile string) (string, er
 }
 
 func (p *azureProvider) clustersIn(sub azureSubscription, withSubscription bool) ([]ClusterRef, error) {
-	out, err := p.az("aks", "list", "--subscription", sub.ID, "--output", "json")
+	// Project only the fields we need: az fails to serialize the full cluster
+	// objects when some fields hold non-UTF-8 bytes (e.g.
+	// securityProfile.customCaTrustCertificates).
+	out, err := p.az("aks", "list", "--subscription", sub.ID,
+		"--query", "[].{name:name, resourceGroup:resourceGroup, location:location}",
+		"--output", "json")
 	if err != nil {
+
 		return nil, err
 	}
 
